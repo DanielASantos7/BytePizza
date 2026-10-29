@@ -25,6 +25,9 @@ public sealed class Pizza : Entity<Guid>, IAggregateRoot
 
     public PizzaCrust Crust { get; }
 
+    /// <summary>
+    /// Creates a pizza after validating its size, flavors, crust, fractions, and currency.
+    /// </summary>
     public static Result<Pizza> Create(
         PizzaSize size,
         IEnumerable<PizzaFlavor>? flavors,
@@ -73,6 +76,8 @@ public sealed class Pizza : Entity<Guid>, IAggregateRoot
                 $"A {size} pizza cannot have more than {maximumFlavorCount} flavors.");
         }
 
+        // ValidateTotal uses exact rational arithmetic, so fractions such as three 1/3 portions
+        // are accepted without relying on approximate decimal equality.
         var fractionsResult = FlavorFraction.ValidateTotal(flavorSnapshot.Select(flavor => flavor.Fraction));
         if (fractionsResult.IsFailure)
         {
@@ -89,6 +94,9 @@ public sealed class Pizza : Entity<Guid>, IAggregateRoot
         return Result.Success(new Pizza(size, flavorSnapshot, crust));
     }
 
+    /// <summary>
+    /// Calculates the weighted sum of flavor prices and adds the crust surcharge.
+    /// </summary>
     public Result<Money> CalculatePrice()
     {
         var currency = Flavors[0].Price.Currency;
@@ -98,6 +106,7 @@ public sealed class Pizza : Entity<Guid>, IAggregateRoot
             var total = Crust.AdditionalPrice.Amount;
             foreach (var flavor in Flavors)
             {
+                // Keep full decimal precision for each share; Money.Create rounds only the final total.
                 total += flavor.Price.Amount * flavor.Fraction.Proportion;
             }
 
