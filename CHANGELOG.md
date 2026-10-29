@@ -6,6 +6,21 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), e e
 
 ## [Unreleased]
 
+### Added
+
+- Agregado `Pizza` com `PizzaFlavor`, `PizzaCrust` e `PizzaSize`, validando a composição e calculando o preço proporcional aos sabores mais o adicional da borda.
+- Testes unitários do agregado Pizza para frações, limites por tamanho, dados inválidos, moedas, arredondamento e overflow.
+
+### Changed
+
+- Especificação de produto higienizada para remover transcrições de ferramentas e registrar os limites iniciais Small (2), Medium (3) e Large (4), substituíveis por configuração do catálogo.
+
+### Fixed
+
+- Removido conteúdo acidental de execução que precedia o título principal de `docs/00-po-specification.md`.
+
+Para o contexto, as decisões e a auditoria da implementação Pizza, consulte o [registro técnico de 2026-10-28](docs/changelogs/2026-10-28-pizza-aggregate.md).
+
 ## [0.1.0] - 2026-10-23
 
 ### Added
