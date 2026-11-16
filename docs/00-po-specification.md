@@ -2,7 +2,7 @@
 
 Segui o escopo de Product Owner descrito em `00-po.prompt.md` e considerei as escolhas que você informou: **múltiplas filiais**, aplicativo para **equipe e clientes**, pagamentos integrados **fora do MVP**, estoque **por receitas**, preço de sabores **proporcional às frações**, **SQL Server** e operação **online obrigatória**.
 
-> **Limite desta análise:** a solução atual contém apenas `<Solution />` em `BytePizza.slnx`. Portanto, isto analisa a especificação fornecida, não uma implementação existente.
+> **Estado em 16/11/2026:** a solução já contém a fundação da camada Domain, um agregado Pizza, testes unitários e um workflow básico de CI. Esta especificação descreve o produto-alvo; não implica que os demais contextos ou fluxos já estejam implementados.
 
 ## 1. Visão do produto
 
@@ -227,6 +227,17 @@ As respostas recebidas resolvem decisões importantes, mas ainda faltam regras c
 5. **Pedidos de cliente:** cliente pode cancelar? Até qual estado? Quais critérios liberam reembolso, caso pagamentos sejam adicionados no futuro?
 6. **Taxas e descontos:** como calcular entrega, descontos, arredondamentos e eventuais taxas? A política deve ser especificada antes de fixar o contrato de preço.
 7. **Operação:** quais são as filiais, fusos horários, volumes esperados e metas de disponibilidade? Esses dados fecham os SLOs de performance e disponibilidade.
+
+## 12. Cobertura dos contextos de negócio
+
+Os requisitos identificam claramente os contextos principais de Identidade e Acesso, Filiais, Catálogo, Clientes, Pedidos, Estoque e Entrega. Notificações em tempo real são uma capacidade de suporte, não a fonte oficial dos estados. A arquitetura deve ainda explicitar:
+
+- **Operações de Loja:** propriedade de mesas e sessões de atendimento para pedidos `DineIn`; manter esse escopo pequeno no MVP e separá-lo de Branch Management apenas se regras de operação justificarem.
+- **Relatórios:** requisito RF-12 precisa de consultas/projeções por filial. Começar como módulo de leitura que consome dados dos contextos proprietários, sem duplicar sua autoridade nem introduzir um novo serviço.
+- **Auditoria e observabilidade:** capacidades transversais para registrar ator, filial, correlação e alterações relevantes; não são, por si só, novos Bounded Contexts do MVP.
+- **Pagamentos:** gateway e conciliação seguem fora do MVP. A necessidade de registrar pagamentos manuais continua pendente de decisão.
+
+Esta classificação é uma verificação de cobertura, não autorização para ampliar o MVP com módulos de promoção, fidelidade, fiscal ou analytics avançado, que permanecem fora de escopo.
 
 ## Pacote de handoff para arquitetura
 
