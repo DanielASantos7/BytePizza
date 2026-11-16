@@ -11,14 +11,19 @@ Demonstrar a construção de uma solução enterprise end-to-end em C# / .NET si
 ---
 
 ## Stack Tecnológica
-- **Target Framework:** .NET 9 / C# 13
+- **Target Framework:** .NET 10 / C# 13
 - **Backend:** ASP.NET Core Web API (Clean Architecture + DDD + CQRS)
 - **Client Mobile/Desktop:** .NET MAUI com MVVM (`CommunityToolkit.Mvvm`)
-- **Persistência:** Entity Framework Core (PostgreSQL / SQL Server) + Redis
+- **Persistência:** Entity Framework Core + SQL Server (produção)
 - **Qualidade & Testes:** xUnit, Moq, FluentAssertions, Bogus
 - **Automação & DevOps:** GitHub Actions (CI/CD) + Docker
 
 ---
+
+## Arquitetura e execução
+- A [especificação de produto](docs/00-po-specification.md) registra requisitos e decisões ainda pendentes.
+- A [blueprint de arquitetura](docs/01-architecture-blueprint.md) define contextos, limites, roadmap por ondas paralelas e critérios para concluir cada etapa.
+- Estado atual: fundação de domínio, agregado Pizza, testes unitários e CI básico; API, persistência, estoque, clientes MAUI e demais contextos ainda precisam ser implementados.
 
 ## Ecossistema de Agentes (.github/prompts/)
 O ciclo de vida do software neste repositório é regido pelos seguintes agentes especializados:
@@ -41,4 +46,4 @@ Para acionar qualquer agente nas sessões de chat, utilize a sintaxe de arquivo 
 Atue como #file:.github/prompts/00-po.prompt.md e analise o requisito X.
 ```
 ## Licença & Uso
-Projeto estritamente educacional para fins de mentoria, aprendizado de arquitetura .NET 9 e orquestração de IAs gerativas em ambiente de desenvolvimento.
+Projeto estritamente educacional para fins de mentoria, aprendizado de arquitetura .NET 10 e orquestração de IAs generativas em ambiente de desenvolvimento.
