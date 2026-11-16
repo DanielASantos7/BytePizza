@@ -1,8 +1,10 @@
 # BytePizza — Architecture Blueprint
 
-**Status:** Proposed  
-**Date:** 2026-10-22  
-**Source:** [`00-po-specification.md`](./00-po-specification.md)
+- **Status:** Baseline arquitetural para implementação; parcialmente implementada
+- **Last reviewed:** 2026-11-16
+- **Source:** [`00-po-specification.md`](./00-po-specification.md)
+
+> Esta blueprint é o alvo de arquitetura, não uma declaração de funcionalidades já entregues. O estado atual implementado é uma fundação de domínio (primitives, Value Objects e agregado Pizza), testes unitários e CI básico. O roteiro de implementação e a divisão de trabalho estão na seção 9.
 
 ## 1. Scope and architectural baseline
 
@@ -19,9 +21,9 @@ BytePizza starts as a modular monolith for multiple branches. Its backend is a v
 - Restrict every staff operation to authorized branches. Customers can only access their own orders.
 - Use an outbox for events that must not be lost. SignalR is a delivery mechanism, not the source of truth.
 
-### Runtime version conflict
+### Runtime baseline
 
-The source specification recommends .NET 10, while the requested ADR explicitly mentions .NET 9. This blueprint records .NET 9 as evaluated but rejected: its support ends on 2026-05-12, before this blueprint's date. The API and MAUI clients should target .NET 10, subject to verifying the required MAUI workloads and dependencies before implementation.
+Target .NET 10 for backend, tests, and .NET MAUI clients, subject to validating supported platform workloads in CI. The repository's existing Domain and unit-test projects already target `net10.0`. Keep SDK pinning and workload validation in the foundation milestone; do not introduce a .NET 9 target.
 
 ## 2. Bounded Contexts and dependencies
 
@@ -38,11 +40,13 @@ flowchart LR
     Branches[Branch Management]
     Catalog[Catalog]
     Customers[Customer Management]
+    StoreOps[Store Operations<br/>Tables and dining sessions]
     Ordering[Ordering]
     Inventory[Inventory]
     Fulfillment[Delivery & Fulfillment]
     Payments[Payments<br/>Deferred MVP]
     Notifications[Notifications]
+    Reporting[Reporting<br/>Read models]
 
     CustomerApp -->|HTTPS / REST| API
     StaffApp -->|HTTPS / REST| API
@@ -52,16 +56,24 @@ flowchart LR
     API --> Branches
     API --> Catalog
     API --> Customers
+    API --> StoreOps
     API --> Ordering
     API --> Inventory
     API --> Fulfillment
+    API --> Reporting
 
     Ordering -->|Product availability and price quote| Catalog
     Ordering -->|Reserve/release/consume recipe stock| Inventory
     Ordering -->|Order accepted/ready events| Notifications
     Ordering -->|Create or update delivery| Fulfillment
+    Ordering -->|Validate dine-in table/session| StoreOps
     Ordering -.->|Payment events / port, future| Payments
     Fulfillment -->|Delivery status events| Ordering
+    Branches -->|Published changes / read contracts| Reporting
+    Catalog -->|Published changes / read contracts| Reporting
+    Ordering -->|Committed order events| Reporting
+    Inventory -->|Committed stock events| Reporting
+    Fulfillment -->|Committed delivery events| Reporting
 
     Ordering -->|Committed Order events via Outbox| Realtime
     Fulfillment -->|Committed Delivery events via Outbox| Realtime
@@ -71,17 +83,36 @@ flowchart LR
 
 ### Context responsibilities and ownership
 
-| Bounded Context        | Owns                                                                                                   | Important boundary                                                                                                                  |
+| Context or module      | Owns                                                                                                   | Important boundary                                                                                                                  |
 | ---------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Identity & Access      | Staff identities, credentials, roles, permissions, refresh-token lifecycle                             | Customer identity may use a separate account policy; never expose staff claims to customer clients.                                 |
+| Identity & Access      | Authentication principals, credentials, roles, permissions, refresh-token lifecycle                             | Supports staff and customer authentication policies; never expose staff claims to customer clients. Customer profile data belongs to Customer Management. |
 | Branch Management      | Branches, operational configuration, branch membership/authorization                                   | Does not own orders, stock, or branch-specific catalog prices.                                                                      |
-| Catalog                | Products, sizes, flavors, edges, add-ons, recipes' sellable configuration, branch price/availability   | Exposes a pricing/availability query contract; Order stores a snapshot rather than a live product reference for historical pricing. |
+| Catalog                | Products, sizes, flavors, edges, add-ons, branch price/availability, and links to sellable recipes     | Exposes a pricing/availability query contract; Inventory owns ingredient recipes. Order stores price snapshots for historical pricing. |
 | Customer Management    | Customer profiles, contact information, addresses and consent                                          | Ordering stores customer ID and delivery-address snapshot; it does not depend on mutable address data after placement.              |
+| Store Operations       | Branch tables and dining sessions required by `DineIn`                                                  | Owns table/session lifecycle only. No table reservation or shift-management workflow is implied unless separately approved.          |
 | Ordering               | Order aggregate, item/options snapshots, totals, state transitions, order history, idempotency records | Owns order lifecycle. Commands validate transitions and do not accept client-supplied prices.                                       |
 | Inventory              | Ingredients, units, recipes, branch stock balances, reservations, movements and adjustments            | Owns stock consistency and reservations; no other context updates balances directly.                                                |
 | Delivery & Fulfillment | Delivery assignment, driver, dispatch and delivery lifecycle                                           | Owns delivery state separately from order state; communicates completion to Ordering through an application port/event.             |
 | Payments               | Payment attempts and payment state                                                                     | Deferred from MVP; keep a seam, not a prematurely implemented gateway abstraction.                                                  |
 | Notifications          | Customer/staff notification delivery                                                                   | Consumes committed events; delivery failure must not roll back an already committed order.                                          |
+| Reporting              | Branch-scoped read models and operational report queries                                               | Supporting read module, not a source-of-truth context. Consumes committed events or explicit read contracts; never reads source tables directly. |
+
+Audit history, authorization enforcement, telemetry, health checks, and delivery of integration events are cross-cutting/platform capabilities, not additional MVP Bounded Contexts. The KDS is a staff-client workflow over Ordering, not a separate source of truth. Administrative use cases stay with the context that owns the managed data. Promotions, fiscal operations, and payment gateway processing remain out of scope.
+
+### Requirement-to-context coverage
+
+| Product requirement | Owning context(s) or capability |
+|---|---|
+| RF-01 Branches, users, roles, and permissions | Branch Management; Identity & Access |
+| RF-02–03 Catalog, branch prices, and availability | Catalog |
+| RF-04–07 Order creation, pizza configuration, customer snapshots, and KDS | Ordering; Catalog; Customer Management; Store Operations; Notifications |
+| RF-08 Ingredient recipes, reservations, and movements | Inventory |
+| RF-09 Driver assignment and delivery lifecycle | Delivery & Fulfillment |
+| RF-10 Operational change history | Cross-cutting audit capability |
+| RF-11 Customer catalog and self-scoped order tracking | Identity & Access; Customer Management; Catalog; Ordering |
+| RF-12 Branch-scoped operational reporting | Reporting read module |
+
+This mapping shows no additional MVP source-of-truth context is currently required. Store Operations and Reporting were previously implicit in the requirements and are now explicit in the design; the remaining gaps are cross-cutting capabilities or unresolved product decisions, not unmodeled contexts.
 
 ### Cross-context consistency
 
@@ -1000,6 +1031,14 @@ BytePizza/
     └── BytePizza.ArchitectureTests/
 ```
 
+The tree is a target, not a list of files already present. Extend it with these context folders as their lanes are implemented:
+
+- `BytePizza.Domain/StoreOperations/` for dining tables/sessions.
+- `BytePizza.Application/StoreOperations/` and `BytePizza.Application/Reporting/` for use cases and read contracts.
+- `BytePizza.Api/Endpoints/StoreOperations/` and `BytePizza.Api/Endpoints/Reporting/`.
+- `BytePizza.Infrastructure/Audit/` for audit adapters; audit remains a cross-cutting capability.
+- Dedicated Store Operations, Reporting, and client test folders under the matching test projects.
+
 ### Dependency direction
 
 ```text
@@ -1031,9 +1070,9 @@ DeliveryChanged(DeliveryChangedEvent)
 ### ADR-0001 — .NET target framework
 
 - **Status:** Accepted — target .NET 10; .NET 9 rejected.
-- **Context:** The request names .NET 9, while the source product specification recommends .NET 10. .NET 9 support ended on 2026-05-12; the design date is 2026-10-22. MAUI targets also need a supported SDK/workload pairing.
+- **Context:** The product specification and current Domain/test projects use .NET 10. Older agent prompts and the initial blueprint contained conflicting .NET 9 references.
 - **Decision:** Target `net10.0` for API and shared backend projects and the corresponding .NET MAUI 10 target frameworks. Pin the SDK via `global.json` to an installed, supported .NET 10 SDK. Verify third-party package and platform workload compatibility before implementation.
-- **Consequences:** Avoids starting on an unsupported runtime and aligns API, mobile clients, and CI. If deployment policy mandates .NET 9, this ADR must be explicitly superseded and the product owner must accept the unsupported-runtime risk; do not silently mix API .NET 9 with MAUI .NET 10.
+- **Consequences:** Keeps API, mobile clients, tests, and CI aligned. Any future framework change must update this ADR, project targets, workloads, and all agent prompts together.
 
 ### ADR-0002 — SQL Server as production database
 
@@ -1056,26 +1095,80 @@ DeliveryChanged(DeliveryChangedEvent)
 - **Decision:** Use GitHub Actions with separate jobs/workflows: Linux for restore, format/analyzers, API build and tests; SQL Server-backed integration tests in CI; a compatible Android runner for MAUI Android build; and Windows runner for Windows client/KDS build. Trigger pull requests and pushes according to the agreed `develop` and `feature/**` workflow. Pin SDK/workload setup and use lock files where practical.
 - **Consequences:** CI time and runner costs increase, but each deliverable is built on a supported platform. Keep secrets in GitHub environments, restrict deployment to protected branches/tags, build once and promote artifacts, and never deploy from untrusted pull-request code. Add deployment/release jobs only after hosting targets and environments are selected.
 
-## 8. Implementation handoff and open decisions
+## 8. Decisions still required before their affected contracts are frozen
 
-### Recommended implementation order
+These are explicit product-owner decision gates. The implementation coordinator should record each answer in the specification/ADR before assigning work that depends on it; agents must not silently invent behavior.
 
-1. Create projects, target frameworks, project references, architecture tests, SDK pinning, and baseline CI.
-2. Implement Identity/Branch authorization and Catalog branch availability/pricing.
-3. Implement Order aggregates, server-side weighted pricing, idempotent creation, and the status state machine.
-4. Implement Inventory recipes/reservations and transactional confirmation.
-5. Add outbox publication, SignalR KDS/customer updates, and reconnect resynchronization.
-6. Add Delivery/Fulfillment workflows and separate customer/staff MAUI flows.
+| Decision | Affected work | Recommended default if approved |
+|---|---|---|
+| Central catalog with branch overrides, or fully branch-managed catalog/prices | Catalog, reports | Shared product definitions with branch-specific price and availability overrides |
+| Customer account required, guest checkout, or both; supported customer-app platforms | Identity, Ordering, MAUI | Authenticated account first; guest checkout only after its privacy and order-recovery rules are specified |
+| Manual payment recording in MVP | Ordering, staff app | Keep payment state out of order lifecycle; defer manual payment records unless explicitly required |
+| Stock reservation/consumption and cancellation compensation | Inventory, Ordering | Reserve at confirmation; consume at preparation; post-preparation cancellation requires an audited adjustment |
+| Delivery fees, discounts, rounding, table/session rules, cancellation policy | Catalog, Ordering, Store Operations, Fulfillment | Define before freezing pricing and order contracts; do not make silent defaults |
+| Expected load/SLO, hosting, environments, release and rollback policy | Infrastructure, CI/CD | Start with agreed measurable targets and a non-production deployment before production |
 
-### Decisions still required before freezing contracts
+The existing baseline decisions are .NET 10, SQL Server, modular monolith, online-only operation, server-calculated prices, branch-scoped authorization, and no payment gateway in the MVP.
 
-- Is catalog pricing centrally managed with branch overrides, or fully managed per branch?
-- Can customers check out as guests, or is account creation mandatory?
-- Should the MVP record external/manual payments even though gateway integration is deferred?
-- Confirm whether canceling after preparation begins releases stock automatically or requires an adjustment.
-- Define delivery fees, discounts, currency rounding precision, flavor-count limits per size, and table/session behavior.
-- Define expected concurrent order volume, availability target, hosting provider, and deployment environments.
+## 9. Implementation roadmap and parallel-agent protocol
+
+### 9.1 Coordination rules
+
+1. Assign one integration owner to freeze contracts, own `BytePizza.slnx`, shared project/package configuration, shared `DbContext`/dependency injection, migrations, and merges.
+2. Run independent lanes in separate branches or worktrees. Give each agent a bounded scope, named files/folders, upstream contract, acceptance criteria, and explicit exclusions.
+3. Use context paths such as `src/BytePizza.Domain/Catalog/` and `src/BytePizza.Application/Catalog/`; testers own only the assigned context's test folder. Parallel agents must not edit the same shared files. Only the integration owner changes solution/project/package configuration, shared `DbContext`/DI, and migrations.
+4. For each implementation wave: **Coder agents implement in parallel → integrate and build → Tester agents add/run independent suites in parallel → integrate and run all affected tests → Reviewer agents review the integrated diff in parallel → fix findings → rerun tests and review changed areas**.
+5. Testers should receive the frozen contracts and acceptance criteria, not another agent's unintegrated assumptions. Reviewers review the integrated commit/PR, not competing working copies.
+6. Every lane reports changed files, commands/results, known gaps, and handoff dependencies. No phase is complete on a code-only claim: its exit gate must pass.
+
+### 9.2 Delivery waves
+
+| Wave | Parallel work lanes | Required outputs and exit gate |
+|---|---|---|
+| 0 — Product and solution foundation | PO/Architect resolves decision gates that block contracts; one Coder/DevOps lane creates projects, SDK/build conventions, dependency rules, and CI skeleton | Projects in solution; .NET 10 alignment; architecture tests prevent forbidden references; all current domain unit tests pass (record the executed count in validation evidence). No context implementation starts against moving contracts. |
+| 1 — Independent domain contexts | Coders: **Branch & access model**; **Catalog & pricing rules**; **Customer profile/address**; **Store Operations tables/sessions**; **Inventory & recipes**; **Ordering aggregate/state/history**; **Fulfillment lifecycle**. Keep file ownership within each context. | Pure-domain invariants and domain events; context ownership documented; no EF/API dependencies in Domain. Each lane builds independently and its contracts are integrated. |
+| 1T / 1R — Domain verification | Testers split by context-owned test folders and write unit tests for invariants, boundary/error results, and allowed transitions. Then reviewers split into domain/DDD and dependency-boundary lanes. | All domain tests pass; architecture tests enforce layer boundaries; review findings resolved. Shared test project configuration is changed only by the integration owner. |
+| 2 — Application use cases | Coders: **Catalog read/pricing ports**; **branch authorization and customer access**; **create/query/transition order**; **inventory reserve/consume/release**; **delivery/table workflows**; **report query contracts**. Ordering uses frozen Catalog and Inventory ports. | Commands/queries, DTOs, validators, CancellationToken propagation, Result/Problem mapping contracts, `AsNoTracking` query interfaces, and idempotency/concurrency contracts. |
+| 2T / 2R — Use-case verification | Testers split by application feature: validators and handlers, authorization matrix, idempotency, state transitions, stock failure/rollback contract. Reviewers split by business rules, authorization, async/error semantics. | Handler tests pass without databases; negative and cross-branch cases are covered; no accepted client-supplied prices. |
+| 3 — Persistence and adapters | Coders: **EF mappings/repositories per context** in separate files; **SQL Server transaction/unit of work**; **identity adapter**; **outbox publisher**. Integration owner alone composes shared `DbContext`, DI, and migration. | SQL Server schema/migrations, concurrency controls, atomic order+stock+outbox transaction, retry/idempotency persistence. No context reads/writes another context's tables directly. |
+| 3T / 3R — Integration verification | Testers split: **repository/mapping**; **transaction/concurrency/outbox**; **identity persistence**. Reviewers split: **SQL/data ownership**; **transaction correctness**; **resilience/secrets**. | SQL Server-backed tests pass, including insufficient-stock rollback, concurrent updates, and duplicate idempotency requests. In-memory EF is not accepted as a substitute. |
+| 4 — API and security boundary | Coders: **Catalog/customer endpoints**; **Order endpoints/OpenAPI**; **Inventory/fulfillment endpoints**; **auth/branch policies and ProblemDetails**. One owner composes `Program.cs` and middleware. | Versioned API matches approved contracts; branch/customer resource authorization enforced server-side; validation and error status mapping are consistent. |
+| 4T / 4R — API verification | Testers split by endpoint groups using `WebApplicationFactory` and SQL Server test fixtures; reviewers split by auth/OWASP, API/OpenAPI contract, privacy/logging. | Integration/contract tests prove allowed and forbidden access, validation, idempotency, status transitions, and RFC-compatible errors. |
+| 5 — Realtime, reporting, operations | Coders: **outbox dispatch and notification delivery**; **SignalR hub/groups/resync**; **branch-scoped report projections/queries**; **audit/telemetry/health checks**. | Outbox is committed atomically and retried safely; authenticated clients cannot subscribe to arbitrary groups; reports are read-only and scoped; sensitive data is excluded. |
+| 5T / 5R — Cross-context verification | Testers split: **outbox/retry/duplicate delivery**; **SignalR authorization/resync**; **report projections and branch isolation**. Reviewers split: **event consistency**, **realtime privacy**, **query performance/observability**. | Tests verify post-commit publication, duplicate/gap behavior, reconnect REST resync, group authorization, and report scoping. |
+| 6 — MAUI client applications | Coders: **shared typed API/auth/navigation primitives**; **customer catalog/order/tracking journey**; **staff order-entry/KDS journey**. Keep customer and staff UI projects distinct; one owner controls shared client contracts. | Android customer app and Windows staff/KDS app compile; strict MVVM; no server-project references; user-facing errors/loading/reconnect flows; online-only behavior is explicit. |
+| 6T / 6R — Client verification | Testers split by customer journeys, staff/KDS journeys, and shared client services/ViewModels. Reviewers split by MVVM/accessibility/privacy and API/session handling. | ViewModel/service tests pass; critical journeys are exercised on supported targets; no business logic or API calls in code-behind. |
+| 7 — Release readiness | DevOps: platform CI, SQL Server integration job, dependency/security checks, container/deployment pipeline and environments. QA: end-to-end smoke/load/recovery. Reviewers: final architecture/security/performance sweep. | Mainline quality gates are green; migrations and rollback are rehearsed; secrets and environments are configured outside source; SLOs and operational runbooks are approved; release candidate is deployable and observable. |
+
+### 9.3 Task cards for coder/tester/reviewer agents
+
+Create one task per lane above using this handoff shape:
+
+```text
+Role: Coder | Tester | Reviewer
+Wave/lane:
+Objective:
+Frozen inputs/contracts:
+Owned paths:
+Must not edit:
+Acceptance criteria:
+Tests/commands and expected evidence:
+Dependencies:
+Handoff to:
+```
+
+For a context lane, keep production and test file ownership disjoint from other agents. Example: the Catalog coder owns `src/BytePizza.Domain/Catalog/**` and its assigned Application files; the Catalog tester owns only its designated test directory; the Catalog reviewer examines the integrated Catalog diff and reports findings without editing it unless separately assigned a remediation task. Shared contracts and dependency changes are integrated serially.
+
+### 9.4 Definition of done for the application
+
+- Product decisions and API/OpenAPI contracts are approved and versioned.
+- All in-scope contexts in the diagram have an implemented owner, or are explicitly marked deferred; no accidental scope remains.
+- Unit, architecture, SQL Server integration, API contract, client, and end-to-end smoke tests pass in CI.
+- Branch/customer authorization, idempotency, order/stock atomicity, concurrency, outbox delivery, privacy, and recovery behavior have explicit tests.
+- Android customer and Windows staff/KDS targets build on their supported runners.
+- Deployment, secrets, migrations/rollback, health checks, alerts, backup/restore, and release procedures are documented and exercised for the agreed environments.
+- Product owner accepts the deferred scope and operational SLO evidence before production.
 
 ### Handoff
 
-The blueprint is ready for implementation planning. The Coder should implement the project skeleton and order contracts from this document; the Tester should derive domain, application, SQL Server integration, and API contract tests; the Reviewer should validate authorization isolation, transaction boundaries, idempotency, and SignalR group access before release.
+Use the roadmap's wave/lane task cards to assign multiple Coder agents without overlapping ownership; only after integration, assign parallel Tester agents, then parallel Reviewers. Repeat this cycle for each wave and block dependent waves until their exit gates pass.

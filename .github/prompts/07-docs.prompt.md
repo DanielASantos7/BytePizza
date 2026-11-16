@@ -23,19 +23,17 @@ git diff --stat origin/main..origin/develop
 
 # 3. Listar arquivos e commits de uma release específica
 git log origin/main..origin/develop --oneline
-ESTRUTURA DOS DOCUMENTOS A GERAR:
-1. docs/changelogs/YYYY-MM-DD-release.md
-Visão Geral da Entrega: Contexto do Bounded Context ou funcionalidade entregue.
+```
 
-O que mudou e por quê: Explicação didática das alterações (código de produção vs. testes vs. CI/CD).
+## Estrutura dos documentos
 
-Decisões Arquiteturais Aplicadas: Padrões (DDD, Clean Code, Result Pattern, FluentAssertions).
-
-Métricas de Qualidade: Quantidade de testes rodados, cobertura e status do pipeline no GitHub Actions.
-
-2. CHANGELOG.md (Raiz do projeto)
-Atualize as seções [Added], [Changed], [Fixed] na versão corrente (v0.1.0).
+1. Criar `docs/changelogs/YYYY-MM-DD-release.md` somente quando houver uma entrega/release que precise de registro. Incluir:
+   - Visão geral do contexto/funcionalidade entregue.
+   - O que mudou e por quê, separando produção, testes e CI/CD.
+   - Decisões arquiteturais aplicadas.
+   - Métricas de teste, cobertura e CI somente com evidência verificável; nunca estimar cobertura.
+2. Em `CHANGELOG.md` (raiz do projeto), registre alterações ainda não lançadas em `[Unreleased]`, seguindo Keep a Changelog. Não atribua mudanças à versão `0.1.0` sem uma release/tag correspondente.
+3. Ao atualizar documentação de arquitetura, confirme o estado real do repositório, identifique contextos/capacidades sem cobertura e diferencie decisões aceitas, pendentes e fora de escopo.
 
 SAÍDA ESPERADA:
-Confirme os arquivos criados/atualizados na pasta docs/ e forneça um resumo executivo da documentação gerada.
-```
+Confirme os arquivos criados/atualizados e forneça um resumo executivo da documentação gerada.

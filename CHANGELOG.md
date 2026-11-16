@@ -6,6 +6,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), e e
 
 ## [Unreleased]
 
+### Changed
+
+- Atualizada a especificação e a blueprint para refletir o estado implementado, alinhar a stack em .NET 10 e explicitar a cobertura de contextos de Operações de Loja, Relatórios e capacidades transversais.
+- Adicionado à blueprint um roteiro até a liberação, com ondas de trabalho paralelas para Coder, Tester e Reviewer, regras de propriedade de arquivos e critérios de saída.
+
 ## [0.1.0] - 2026-10-23
 
 ### Added
